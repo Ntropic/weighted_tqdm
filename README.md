@@ -8,7 +8,7 @@ Import via
 
 ## Description
 **weighted_tqdm** works equivalently to tqdm, accepting all the same arguments, but also accepts a `weights` argument. This argument specifies the weights of each item in the iterable and can be given as a function of the iterable or be any iterable (list, array, tuple...). The progress bar will then take into account the weights of each item in it's prediciton of the time, and it's progress bar will be weighted accordingly. To the left of the progress bar an iteration counter is shown.
-**qudit_tqdm** is a special version of tqdm, that predicts the remaining time for calculations in quantum mechanics, with the added arguments `dit` specifying whether its a calculation of qubits(default, `dit  = 0.3, =  3` for qutrits), and the argument `exp` specifying the scaling of computational time with the dimension of a hilbert space. 
+**qudit_tqdm** is a special variant of tqdm, that predicts the remaining time for calculations in quantum mechanics, with the added arguments `dit` specifying whether its a calculation of qubits (default `dit=2` or `dit=3` for qutrits), and the argument `exp` specifying the scaling of computational time with the dimension of a hilbert space. 
 
 
 
