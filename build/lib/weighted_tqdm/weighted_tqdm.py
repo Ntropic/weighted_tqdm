@@ -3,6 +3,8 @@
 # adds input weights=[1,2,4,8,16] for a progress bar that takes into account that iteration 2 takes twice as long as iteration 1, and iteration 3 takes 4 times as long as iteration 1, etc.
 import time
 from tqdm import tqdm
+import itertools
+import numpy as np
 
 def determine_length_of_iterable(iterable, weights, **kwargs):
     # calulcate the total number of iterations
@@ -130,9 +132,9 @@ class progress:
                 new_count = round(self.current_count_float*self.total)
                 diff_count = new_count - self.current_count
                 if self.print_val:
-                    self.pbar.set_description(self.names[-1]+str(elem)+' (' +str(ind+1) + '/' + str(how_many) + ')')
+                    self.pbar.set_description(self.names[-1]+str(elem)+' (' +str(ind) + '/' + str(how_many) + ')')
                 else:
-                    self.pbar.set_description(self.names[-1]+'(' +str(ind+1) + '/' + str(how_many) + ')')
+                    self.pbar.set_description(self.names[-1]+'(' +str(ind) + '/' + str(how_many) + ')')
                 self.pbar.update(diff_count)
                 self.current_count = new_count
                 destroyed_subcall_last = 0
@@ -164,6 +166,11 @@ class progress:
             self.weight_by_level = []
             self.names = []
             self.levels = 0    
+            if self.print_val:
+                self.pbar.set_description(self.names[-1]+str(elem)+' (' +str(ind+1) + '/' + str(how_many) + ')')
+            else:
+                self.pbar.set_description(self.names[-1]+'(' +str(ind+1) + '/' + str(how_many) + ')')
+
             
     def tqdm(self, iterable, **kwargs):
         return self.weighted_tqdm(iterable, **kwargs)
@@ -176,9 +183,8 @@ class progress:
 #    for j in p.tqdm((1,2,3,4,5), name='inner'):
 #        time.sleep(0.1*(i+1))      
 
-
 class weighted_kronbinations_tqdm:
-    def __init__(self, list_of_iterators, list_of_weights, total=1000, **kwargs):
+    def __init__(self, list_of_iterators, list_of_weights, total=1000, bar_format='{l_bar}{bar}| {elapsed}<{remaining}', **kwargs):
         # this function takes a list of iterators and weights and returns a generator that iterates through the kronecker product of the iterators
         # Prepare data
         lengths = []
@@ -190,6 +196,15 @@ class weighted_kronbinations_tqdm:
         self.lengths = lengths
         self.weights = weights
         self.total = total
+        # Variables for subincrements 
+        # similar to progress class but lowest level is kronbinations level and 
+        # treated differently
+        self.levels = 0
+        self.weight_by_level = []
+        self.ind_by_level = []
+        self.names = []
+        self.bar_format = bar_format
+        
     def init(self, indexes, **kwargs):
         # indexes is a 2d array of indexes, where each row is an index and each column is an iterator
         # Construct a pbar object, and find the total weight  of all indexes to renormalize for the pbar
@@ -198,24 +213,91 @@ class weighted_kronbinations_tqdm:
         for ind in indexes:
             weights.append(np.prod([self.weights[i][j] for i, j in enumerate(ind)]))
         sum_weights = sum(weights)
-        self.curr_weights = [i/sum_weights for i in weights]
         if 'total' in kwargs:
             self.total = kwargs['total']
+        factor = self.total / sum_weights 
+        self.curr_weights = [i*factor for i in weights]
+
         self.indexes = indexes
         self.len_indexes = len(indexes)
         self.curr_ind = 0 # tracks the current indexes index in indexes
         self.cumm_weight = 0.0
         self.curr_pbar_index = 0
-        self.pbar = tqdm(total=self.total, bar_format='{l_bar}{bar}| {elapsed}<{remaining}')
+        self.pbar = tqdm(total=self.total, bar_format=self.bar_format)
+        
+    def sub_tqdm(self, iterable, weights=None, name='', **kwargs):
+        how_many = determine_length_of_iterable(iterable, weights, **kwargs)
+        self.levels += 1
+        my_level = self.levels
+        if len(name):
+            name += ': '
+        self.names.append(name)
+        self.ind_by_level.append(0)
+        weight_vals, weight_sum = make_weight_list(iterable, how_many, weights=weights)
+        if my_level == 1:
+            weight_factor = self.curr_weights[self.curr_ind]  # multiply with current weight of level 0
+        else:
+            weight_factor = self.weight_by_level[-1][self.ind_by_level[my_level-2]]
+        weight_factor = weight_factor/weight_sum
+        weight_vals = [w*weight_factor for w in weight_vals]
+        self.weight_by_level.append(weight_vals)
+        ind = 0
+        self.pbar.set_description(self.names[-1]+' (' +str(ind) + '/' + str(how_many) + ')')
+        iterator = iter(iterable)
+        yield next(iterator) 
+        for i in range(1, how_many):
+            elem = next(iterator)
+            if my_level == self.levels: # no sub-call -> update pbar
+                self.cumm_weight += self.weight_by_level[-1][ind]
+                ind += 1
+                new_count = round(self.cumm_weight)
+                diff_count = new_count - self.curr_pbar_index
+                self.pbar.set_description(self.names[-1]+' (' +str(ind) + '/' + str(how_many) + ')')
+                self.pbar.update(diff_count)
+                self.current_count = new_count
+                self.curr_pbar_index = new_count
+                destroyed_subcall_last = 0
+            else: # there was a subcall -> destroy it
+                ind += 1
+                self.levels -= 1
+                self.weight_by_level.pop()
+                self.ind_by_level.pop()
+                self.names.pop()
+                destroyed_subcall_last = 1
+            self.ind_by_level[my_level-1] = ind
+            yield elem
+        if not destroyed_subcall_last: # if there was a subcall, the progress bar was already updated
+            self.cumm_weight += self.weight_by_level[-1][ind]
+            new_count = round(self.cumm_weight)
+            diff_count = new_count - self.current_count
+            self.current_count = new_count
+            self.curr_pbar_index = new_count
+            self.pbar.set_description(self.names[-1]+'(' +str(ind+1) + '/' + str(how_many) + ')')
+            self.pbar.update(diff_count)
+        else:
+            self.pbar.set_description(self.names[-1]+'(' +str(ind+1) + '/' + str(how_many) + ')')
+                
     def increment(self):
         # increment 
         curr_weight = self.curr_weights[self.curr_ind]
         self.curr_ind += 1
         #self.pbar.set_description('(' +str(i) + '/' + str(self.len_indexes) + ')')
-        self.cumm_weight += curr_weight * self.total
-        new_index = round(self.cumm_weight)
-        diff = new_index - self.curr_pbar_index
-        self.curr_pbar_index = new_index
-        self.pbar.update(diff)
-        if self.curr_ind == len(indexes): # close pbar
-            self.pbar.close()
+        if self.levels == 0:
+            self.cumm_weight += curr_weight 
+            new_index = round(self.cumm_weight)
+            diff = new_index - self.curr_pbar_index
+            self.curr_pbar_index = new_index
+            self.pbar.update(diff)
+        else: # reset sublevels
+            self.levels = 0
+            self.weight_by_level = []
+            self.ind_by_level = []
+            self.names = []
+            
+    def close(self):
+        self.pbar.close()
+        
+    def all_indexes(self):
+        list_of_indexes = [list(np.arange(0, len(l))) for l in list_of_iterators]
+        return np.array(list(itertools.product(*list_of_indexes)))
+    

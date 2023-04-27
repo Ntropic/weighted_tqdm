@@ -1,7 +1,7 @@
 # weighted_tqdm
 
 Install via 
-`pip install weighted_tqdm`
+`pip install weighted-tqdm`
 
 Import via
 `from weighted_tqdm import *`
