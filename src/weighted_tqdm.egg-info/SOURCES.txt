@@ -9,5 +9,3 @@ src/weighted_tqdm.egg-info/SOURCES.txt
 src/weighted_tqdm.egg-info/dependency_links.txt
 src/weighted_tqdm.egg-info/requires.txt
 src/weighted_tqdm.egg-info/top_level.txt
-test/test_JIT_kronbinations.py
-test/test_kronbinations.py
