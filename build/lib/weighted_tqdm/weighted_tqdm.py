@@ -5,6 +5,8 @@ import time
 from tqdm import tqdm
 import itertools
 import numpy as np
+from pathos.helpers import cpu_count
+from pathos.multiprocessing import ProcessingPool as Pool
 
 def determine_length_of_iterable(iterable, weights, **kwargs):
     # calulcate the total number of iterations
@@ -72,13 +74,41 @@ def weighted_tqdm(iterable, weights=None, name='', print_val=False, bar_format='
 def qudit_tqdm(iterable, dit=2, exp=3, name='qubits', print_val=False, bar_format='{l_bar}{bar}| {elapsed}<{remaining}', **kwargs):
     #  calculates the increase in compute for qudit calculations (by default for qubits and considereng O(n**3) operations)
     return weighted_tqdm(iterable, weights=lambda i: (dit**i)**exp, name=name, print_val=print_val, bar_format=bar_format, **kwargs)
-        
+
+def _parallel(function, *iterables, **kwargs):
+    # Modified version of p_tqdm works with weighted_tqdm generators
+    # Extract num_cpus
+    num_cpus = kwargs.pop('num_cpus', None)
+
+    # Determine num_cpus
+    if num_cpus is None:
+        num_cpus = cpu_count()
+    elif type(num_cpus) == float:
+        num_cpus = int(round(num_cpus * cpu_count()))
+
+    # Determine length of tqdm (equal to length of shortest iterable or total kwarg), if possible
+    total = kwargs.pop('total', None)
+    lengths = [len(iterable) for iterable in iterables if hasattr(iterable, '__len__')]
+    length = total or (min(lengths) if lengths else None)
+
+    # Create parallel generator
+    pool = Pool(num_cpus)
+    for item in weighted_tqdm(pool.imap(function, *iterables), **kwargs, weights= np.ones(length)/length):
+        yield item
+    pool.clear()
+
+
+def weighted_p_tqdm(function, *iterables, **kwargs):
+    """Performs a parallel ordered map with a progress bar."""
+    generator = _parallel( function, *iterables, **kwargs)
+    result = list(generator)
+    return result        
 # A variant of tqdm, that creates a progress bar generator (via class called progress), 
 # which is then used to create progress bars, which can be split between different loops
 ## for example:
 # p = progress()# for i in p.tqdm(range(10)):
-#    for j in p.tqdm(range(10)):
-#       pass
+# for j in p.tqdm(range(10)):
+#     pass
 ## this will create a progress bar where every iteration of j is counted as 1/10th of an iteration of i
 class progress:
     def __init__(self, total=1000, print_val=False, bar_format='{l_bar}{bar}| {elapsed}<{remaining}', max_rate=30, **kwargs):
@@ -94,6 +124,27 @@ class progress:
         self.names = []
         self.min_time = 1/max_rate
         self.time = time.time()
+        
+    def _parallel(self, function, *iterables, num_cpus=None, **kwargs):
+        # Modified version of p_tqdm works with weighted_tqdm generators
+
+        # Determine num_cpus
+        if num_cpus is None:
+            num_cpus = cpu_count()
+        elif type(num_cpus) == float:
+            num_cpus = int(round(num_cpus * cpu_count()))
+
+        # Create parallel generator
+        pool = Pool(num_cpus)
+        for item in self.tqdm(pool.imap(function, *iterables), **kwargs):
+            yield item
+        pool.clear()
+        
+    def p_tqdm(self, function, *iterables, num_cpus=None, **kwargs):
+        """Performs a parallel ordered map with a progress bar."""
+        generator = self._parallel(function, *iterables, num_cpus=num_cpus, **kwargs)
+        result = list(generator)
+        return result
         
     def weighted_tqdm(self, iterable, weights=None, name='', **kwargs):
         how_many = determine_length_of_iterable(iterable, weights, **kwargs)
@@ -176,7 +227,7 @@ class progress:
                 self.pbar.set_description(self.names[-1]+str(elem)+' (' +str(ind+1) + '/' + str(how_many) + ')')
             else:
                 self.pbar.set_description(self.names[-1]+'(' +str(ind+1) + '/' + str(how_many) + ')')
-            self.time = new_time
+            self.time = time.time()
             self.pbar.close()
             self.pbar = None
             self.current_count = 0
@@ -247,6 +298,28 @@ class weighted_kronbinations_tqdm:
         self.cumm_weight = 0.0
         self.curr_pbar_index = 0
         self.pbar = tqdm(total=self.total, bar_format=self.bar_format)
+        
+                
+    def _parallel(self, function, *iterables, num_cpus=None, **kwargs):
+        # Modified version of p_tqdm works with weighted_tqdm generators
+
+        # Determine num_cpus
+        if num_cpus is None:
+            num_cpus = cpu_count()
+        elif type(num_cpus) == float:
+            num_cpus = int(round(num_cpus * cpu_count()))
+
+        # Create parallel generator
+        pool = Pool(num_cpus)
+        for item in self.sub_tqdm(pool.imap(function, *iterables), **kwargs):
+            yield item
+        pool.clear()
+        
+    def p_tqdm(self, function, *iterables, num_cpus=None, **kwargs):
+        """Performs a parallel ordered map with a progress bar."""
+        generator = self._parallel(function, *iterables, num_cpus=num_cpus, **kwargs)
+        result = list(generator)
+        return result
         
     def sub_tqdm(self, iterable, weights=None, name='', **kwargs):
         how_many = determine_length_of_iterable(iterable, weights, **kwargs)

@@ -14,6 +14,7 @@ qubits weights = lambda x: (2**x)**3
 for i in weighted_tqdm(how_many_qubits, weights=weights):
     # do something
 ```
+New: Now supports `p_tqdm` with an additionally passed function handle for parallel execution. This functionality extends to the generators. 
 
 **qudit_tqdm** is a special variant of tqdm, that predicts the remaining time for calculations in quantum mechanics, with the added arguments `dit` specifying whether its a calculation of qubits (default `dit=2` or `dit=3` for qutrits), and the argument `exp` specifying the scaling of computational time with the dimension of a hilbert space. 
 ```
