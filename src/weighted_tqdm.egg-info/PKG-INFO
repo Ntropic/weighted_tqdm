@@ -1,8 +1,8 @@
 Metadata-Version: 2.1
 Name: weighted-tqdm
-Version: 0.8
+Version: 0.9
 Summary: weighted_tqdm allows for weighted iterations in tqdm progress bars.
-Home-page: https://github.com/Ntropic/weighted_tqdm/archive/refs/tags/v0.8.tar.gz
+Home-page: https://github.com/Ntropic/weighted_tqdm/archive/refs/tags/v0.9.tar.gz
 Author: Michael Schilling
 Author-email: michael@ntropic.de
 Classifier: Programming Language :: Python :: 3
@@ -28,6 +28,7 @@ qubits weights = lambda x: (2**x)**3
 for i in weighted_tqdm(how_many_qubits, weights=weights):
     # do something
 ```
+New: Now supports `p_tqdm` with an additionally passed function handle for parallel execution. This functionality extends to the generators. 
 
 **qudit_tqdm** is a special variant of tqdm, that predicts the remaining time for calculations in quantum mechanics, with the added arguments `dit` specifying whether its a calculation of qubits (default `dit=2` or `dit=3` for qutrits), and the argument `exp` specifying the scaling of computational time with the dimension of a hilbert space. 
 ```

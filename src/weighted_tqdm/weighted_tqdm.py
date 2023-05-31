@@ -27,11 +27,15 @@ def make_weight_list(iterable, total, weights=None):
             min_weight = min(weights)
             weights = [int(i/min_weight) for i in weights]
             weight_sum = sum(weights)
-        else:
+        # if callable
+        elif callable(weights):
             weight_vals = [weights(i) for i in iterable]
             min_weight = min(weight_vals)
             weights = [int(i/min_weight) for i in weight_vals]
             weight_sum = sum(weights)
+        else: # constant
+            weight_sum = weights*total
+            weights = [weights]*total
     else:
         weight_sum = total
         weights = [1]*total
@@ -255,7 +259,7 @@ class progress:
 #        time.sleep(0.1*(i+1))      
 
 class weighted_kronbinations_tqdm:
-    def __init__(self, list_of_iterators, list_of_weights, total=1000, bar_format='{l_bar}{bar}| {elapsed}<{remaining}', max_rate=30, **kwargs):
+    def __init__(self, list_of_iterators, list_of_weights, total=1000, bar_format='{l_bar}{bar}| {elapsed}<{remaining}', **kwargs):
         # this function takes a list of iterators and weights and returns a generator that iterates through the kronecker product of the iterators
         # Prepare data
         lengths = []
@@ -265,7 +269,6 @@ class weighted_kronbinations_tqdm:
             weights_var, sum_weights = make_weight_list(i, lengths[-1], w)
             weights.append([j/sum_weights for j in weights_var])
         self.lengths = lengths
-        self.total_length = np.prod(lengths)
         self.weights = weights
         self.total = total
         # Variables for subincrements 
@@ -276,8 +279,6 @@ class weighted_kronbinations_tqdm:
         self.ind_by_level = []
         self.names = []
         self.bar_format = bar_format
-        self.last_update_time = time.time()
-        self.min_t = 1/max_rate
         
     def init(self, indexes, **kwargs):
         # indexes is a 2d array of indexes, where each row is an index and each column is an iterator
@@ -299,28 +300,6 @@ class weighted_kronbinations_tqdm:
         self.curr_pbar_index = 0
         self.pbar = tqdm(total=self.total, bar_format=self.bar_format)
         
-                
-    def _parallel(self, function, *iterables, num_cpus=None, **kwargs):
-        # Modified version of p_tqdm works with weighted_tqdm generators
-
-        # Determine num_cpus
-        if num_cpus is None:
-            num_cpus = cpu_count()
-        elif type(num_cpus) == float:
-            num_cpus = int(round(num_cpus * cpu_count()))
-
-        # Create parallel generator
-        pool = Pool(num_cpus)
-        for item in self.sub_tqdm(pool.imap(function, *iterables), **kwargs):
-            yield item
-        pool.clear()
-        
-    def p_tqdm(self, function, *iterables, num_cpus=None, **kwargs):
-        """Performs a parallel ordered map with a progress bar."""
-        generator = self._parallel(function, *iterables, num_cpus=num_cpus, **kwargs)
-        result = list(generator)
-        return result
-        
     def sub_tqdm(self, iterable, weights=None, name='', **kwargs):
         how_many = determine_length_of_iterable(iterable, weights, **kwargs)
         self.levels += 1
@@ -341,6 +320,7 @@ class weighted_kronbinations_tqdm:
         self.pbar.set_description(self.names[-1]+' (' +str(ind) + '/' + str(how_many) + ')')
         iterator = iter(iterable)
         yield next(iterator) 
+        destroyed_subcall_last = 0
         for i in range(1, how_many):
             elem = next(iterator)
             if my_level == self.levels: # no sub-call -> update pbar
@@ -377,10 +357,7 @@ class weighted_kronbinations_tqdm:
         # increment 
         curr_weight = self.curr_weights[self.curr_ind]
         self.curr_ind += 1
-        new_time = time.time()
-        if new_time - self.last_update_time > self.min_t:
-            self.pbar.set_description('(' +str(self.curr_ind) + '/' + str(self.total_length) + ')')
-            self.last_update_time = new_time
+        #self.pbar.set_description('(' +str(i) + '/' + str(self.len_indexes) + ')')
         if self.levels == 0:
             self.cumm_weight += curr_weight 
             new_index = round(self.cumm_weight)
@@ -394,8 +371,6 @@ class weighted_kronbinations_tqdm:
             self.names = []
             
     def close(self):
-        self.pbar.set_description('(' +str(self.curr_ind) + '/' + str(self.total_length) + ')')
-        self.pbar.update(0)
         self.pbar.close()
         
     def all_indexes(self):
